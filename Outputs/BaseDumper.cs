@@ -28,18 +28,34 @@ namespace ProtoDumper.Outputs {
         public virtual List<string> DumpProto(Proto proto) {
             var strings = new List<string>();
 
-            // TODO: Add a main instance file to add imports, this wouldn't work if there was a nested proto inside a nested proto, thankfully genshin doesn't have any
+            var imports = new List<string>();
+
+            // TODO: Make a decent way to get imports because this..................
+            foreach (var field in proto.Fields) {
+                foreach (var type in field.Types) {
+                    if (type.IsImport) imports.Add(type.Name);
+                }
+            }
+
             foreach (var nestedProto in proto.NestedProtos) {
-                foreach (var import in nestedProto.Imports) {
-                    proto.Imports.Add(import);
+                foreach (var field in nestedProto.Fields) {
+                    foreach (var type in field.Types) {
+                        if (type.IsImport) imports.Add(type.Name);
+                    }
+                }
+            }
+
+            foreach (var oneof in proto.Oneofs) {
+                foreach (var entry in oneof.Entries) {
+                    if (entry.IsImport) imports.Add(entry.Type);
                 }
             }
 
             if (!proto.Nested) {
-                foreach (var import in proto.Imports.Distinct().ToList()) {
+                foreach (var import in imports.Distinct().ToList()) {
                     strings.Add($"import \"{import}.proto\";");
                 }
-                if (proto.Imports.Count > 0) strings.Add("");
+                if (imports.Count > 0) strings.Add("");
             }
 
             strings.Add($"{(proto.IsEnum ? "enum" : "message")} {proto.Name} {{");
@@ -63,7 +79,15 @@ namespace ProtoDumper.Outputs {
             }
 
             foreach (var field in proto.Fields) {
-                strings.Add($"  {field.Type}{(field.Name != "" ? $" {ToCamelCase(field.Name)}" : "")} = {field.FieldNumber};");
+                if (field.IsRepeated) {
+                    strings.Add($"  repeated {field.Types[0].Name}{(field.Name != "" ? $" {ToCamelCase(field.Name)}" : "")} = {field.FieldNumber};");
+                }
+                else if (field.IsMap) {
+                    strings.Add($"  map<{field.Types[0].Name}, {field.Types[1].Name}>{(field.Name != "" ? $" {ToCamelCase(field.Name)}" : "")} = {field.FieldNumber};");
+                }
+                else {
+                    strings.Add($"  {field.Types[0].Name}{(field.Name != "" ? $" {ToCamelCase(field.Name)}" : "")} = {field.FieldNumber};");
+                }
             }
 
             strings.Add("}");
@@ -79,8 +103,9 @@ namespace ProtoDumper.Outputs {
             // TODO: Check if it has aliases, if it doesn't, don't add this line
             // TODO: Fix CmdId for protoc
             if (pEnum.Name.Equals("CmdId")) strings.Add("  option allow_alias = true;");
-            foreach (var content in pEnum.Entries) {
-                strings.Add($"  {content.Name} = {content.Value};");
+
+            foreach (var entry in pEnum.Entries) {
+                strings.Add($"  {entry.Name} = {entry.Value};");
             }
             strings.Add("}");
 
@@ -92,7 +117,7 @@ namespace ProtoDumper.Outputs {
 
             strings.Add($"oneof {oneof.Name} {{");
             foreach (var entry in oneof.Entries) {
-                strings.Add($"  {entry.Type} {ToCamelCase(entry.Name)} = {entry.Value};");
+                strings.Add($"  {entry.Type} {ToCamelCase(entry.Name)} = {entry.FieldNumber};");
             }
             strings.Add("}");
 

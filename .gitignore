@@ -3,3 +3,4 @@ bin/
 obj/
 packages/
 *.csproj.user
+Assembly-CSharp.dll

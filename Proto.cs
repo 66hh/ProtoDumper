@@ -8,32 +8,44 @@ namespace ProtoDumper {
         public List<ProtoEnum> Enums;
         public List<Proto> NestedProtos;
         public List<ProtoOneof> Oneofs;
-        public List<string> Imports;
         public bool Nested;
         public bool IsEnum;
 
-        public Proto(string name, int cmdId, List<ProtoField> fields, List<ProtoEnum> enums, List<Proto> nestedProtos, List<ProtoOneof> oneofs, List<string> imports, bool nested, bool isEnum) {
+        public Proto(string name, int cmdId, List<ProtoField> fields, List<ProtoEnum> enums, List<Proto> nestedProtos, List<ProtoOneof> oneofs, bool nested, bool isEnum) {
             Name = name;
             CmdID = cmdId;
             Fields = fields;
             Enums = enums;
             NestedProtos = nestedProtos;
             Oneofs = oneofs;
-            Imports = imports;
             Nested = nested;
             IsEnum = isEnum;
         }
     }
 
     public class ProtoField {
-        public string Type;
+        public List<ProtoType> Types;
         public string Name;
         public int FieldNumber;
+        public bool IsRepeated;
+        public bool IsMap;
 
-        public ProtoField(string type, string name, int fieldNumber) {
-            Type = type;
+        public ProtoField(List<ProtoType> types, string name, int fieldNumber, bool isRepeated = false, bool isMap = false) {
+            Types = types;
             Name = name;
             FieldNumber = fieldNumber;
+            IsRepeated = isRepeated;
+            IsMap = isMap;
+        }
+    }
+
+    public class ProtoType {
+        public string Name;
+        public bool IsImport;
+
+        public ProtoType(string name, bool isImport = false) {
+            Name = name;
+            IsImport = isImport;
         }
     }
 
@@ -70,12 +82,14 @@ namespace ProtoDumper {
     public class ProtoOneofEntry {
         public string Type;
         public string Name;
-        public int Value;
+        public int FieldNumber;
+        public bool IsImport;
 
-        public ProtoOneofEntry(string type, string name, int value) {
+        public ProtoOneofEntry(string type, string name, int fieldNumber, bool isImport = false) {
             Type = type;
             Name = name;
-            Value = value;
+            FieldNumber = fieldNumber;
+            IsImport = isImport;
         }
     }
 }

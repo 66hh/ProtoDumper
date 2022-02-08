@@ -69,13 +69,15 @@ namespace ProtoDumper {
                                 }
                             }
 
-                            protoOneofEntries.Add(new ProtoOneofEntry(CSharpTypeNameToProtoTypeName(foundProperty.PropertyType), field.Name, (int)field.Constant));
+                            protoOneofEntries.Add(new ProtoOneofEntry(CSharpTypeNameToProtoTypeName(foundProperty.PropertyType), field.Name, (int)field.Constant, foundProperty.PropertyType.Namespace == "Proto"));
+                            // Exclude Oneof fields
                             fieldsToExclude.Add(foundProperty.Name);
                         }
                     }
                     protoOneofs.Add(new ProtoOneof(nestedType.Name.Substring(0, nestedType.Name.Length - 9), protoOneofEntries));
-                // If type is a nested proto or cmd id
-                } else if (nestedType.Name == "Types") {
+                    // If type is a nested proto or cmd id
+                }
+                else if (nestedType.Name == "Types") {
                     foreach (var nestedType2 in nestedType.NestedTypes) {
                         if (nestedType2.BaseType.FullName == "System.Enum") {
                             var protoEnumContents = new List<ProtoEnumEntry>();
@@ -88,14 +90,14 @@ namespace ProtoDumper {
                                 }
                             }
                             protoEnums.Add(new ProtoEnum(nestedType2.Name, protoEnumContents));
-                        } else {
+                        }
+                        else {
                             nestedProtos.Add(TypeToProto(nestedType2, true));
                         }
                     }
                 }
             }
 
-            var imports = new List<string>();
             var isEnum = type.BaseType.FullName == "System.Enum";
 
             // Loop through all fields and find the proto fields
@@ -112,46 +114,41 @@ namespace ProtoDumper {
                     }
 
                     if (foundProperty != null) {
-                        string fieldType;
+                        ProtoField protoField = null;
                         // If the field is a repeated primitive or repeated message
                         if (foundProperty.PropertyType.FullName.StartsWith(RepeatedPrimitiveFieldName) || foundProperty.PropertyType.FullName.StartsWith(RepeatedMessageFieldName)) {
                             var mapType = (GenericInstanceType)foundProperty.PropertyType;
-                            foreach (var argument in mapType.GenericArguments) {
-                                // If the map arg is a proto, add to import list
-                                if (argument.Namespace == "Proto") imports.Add(argument.Name);
-                            }
-                            fieldType = $"repeated {CSharpTypeNameToProtoTypeName(mapType.GenericArguments[0])}";
-                            // If the field is a map or message map
-                        } else if (foundProperty.PropertyType.FullName.StartsWith(MapFieldName) || foundProperty.PropertyType.FullName.StartsWith(MessageMapFieldName)) {
+                            protoField = new ProtoField(new List<ProtoType>() { new ProtoType(CSharpTypeNameToProtoTypeName(mapType.GenericArguments[0]), mapType.GenericArguments[0].Namespace == "Proto") }, foundProperty.Name, (int)field.Constant, true);
+                            // fieldType = $"repeated {CSharpTypeNameToProtoTypeName(mapType.GenericArguments[0])}";
+                        }
+                        // If the field is a map or message map
+                        else if (foundProperty.PropertyType.FullName.StartsWith(MapFieldName) || foundProperty.PropertyType.FullName.StartsWith(MessageMapFieldName)) {
                             var mapType = (GenericInstanceType)foundProperty.PropertyType;
-                            foreach (var argument in mapType.GenericArguments) {
-                                // If the map arg is a proto, add to import list
-                                if (argument.Namespace == "Proto") imports.Add(argument.Name);
-                            }
-                            fieldType = $"map<{CSharpTypeNameToProtoTypeName(mapType.GenericArguments[0])}, {CSharpTypeNameToProtoTypeName(mapType.GenericArguments[1])}>";
-                        } else {
+                            protoField = new ProtoField(new List<ProtoType>() { new ProtoType(CSharpTypeNameToProtoTypeName(mapType.GenericArguments[0]), mapType.GenericArguments[0].Namespace == "Proto"), new ProtoType(CSharpTypeNameToProtoTypeName(mapType.GenericArguments[1]), mapType.GenericArguments[1].Namespace == "Proto") }, foundProperty.Name, (int)field.Constant, false, true);
+                            // fieldType = $"map<{CSharpTypeNameToProtoTypeName(mapType.GenericArguments[0])}, {CSharpTypeNameToProtoTypeName(mapType.GenericArguments[1])}>";
+                        }
+                        else {
                             // If the field is a proto, add to import list
-                            if (foundProperty.PropertyType.Namespace == "Proto") imports.Add(foundProperty.PropertyType.Name);
-                            fieldType = CSharpTypeNameToProtoTypeName(foundProperty.PropertyType);
+                            protoField = new ProtoField(new List<ProtoType>() { new ProtoType(CSharpTypeNameToProtoTypeName(foundProperty.PropertyType), foundProperty.PropertyType.Namespace == "Proto") }, foundProperty.Name, (int)field.Constant);
+                            // fieldType = CSharpTypeNameToProtoTypeName(foundProperty.PropertyType);
                         }
                         // Override for fixed32 in AbilityEmbryo proto
                         if (type.Name == "AbilityEmbryo" && (foundProperty.Name == "AbilityNameHash" || foundProperty.Name == "AbilityOverrideNameHash")) {
-                            protoFields.Add(new ProtoField("fixed32", foundProperty.Name, (int)field.Constant));
-                        } else {
-                            if (!fieldsToExclude.Contains(foundProperty.Name)) protoFields.Add(new ProtoField(fieldType, foundProperty.Name, (int)field.Constant));
+                            protoField = new ProtoField(new List<ProtoType>() { new ProtoType("fixed32") }, foundProperty.Name, (int)field.Constant);
                         }
+                        if (!fieldsToExclude.Contains(foundProperty.Name)) protoFields.Add(protoField);
                     }
                 }
 
                 // If the type is an enum
                 if (isEnum) {
                     if (field.Name != "value__") {
-                        protoFields.Add(new ProtoField(field.Name, "", (int)field.Constant));
+                        protoFields.Add(new ProtoField(new List<ProtoType>() { new ProtoType(field.Name) }, "", (int)field.Constant));
                     }
                 }
             }
 
-            return new Proto(type.Name, cmdId, protoFields, protoEnums, nestedProtos, protoOneofs, imports, nested, isEnum);
+            return new Proto(type.Name, cmdId, protoFields, protoEnums, nestedProtos, protoOneofs, nested, isEnum);
         }
 
         // So far all the used types
@@ -172,7 +169,8 @@ namespace ProtoDumper {
             if (type.Namespace == "Proto" || type.IsNested) return type.Name;
             if (ProtoTypes.TryGetValue(type.FullName, out var proto)) {
                 return proto;
-            } else {
+            }
+            else {
                 Console.WriteLine($"Unknown type \"{type.FullName}\" found!");
                 return $"UNK_{type}";
             }
