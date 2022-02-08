@@ -177,7 +177,7 @@ namespace ProtoDumper.Outputs {
 
         public static Dictionary<string, string> TypeScriptTypes = new Dictionary<string, string> {
             ["uint32"] = "number",
-            ["uint64"] = "number",
+            ["uint64"] = "BigInt",
             ["bool"] = "boolean",
             ["int32"] = "number",
             ["int64"] = "BigInt",
